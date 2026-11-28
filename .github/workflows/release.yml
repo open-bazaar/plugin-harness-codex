@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Tag to release (defaults to v<plugin.json version>)
+        description: Tag to release (defaults to v<plugin.toml version>)
         required: false
         type: string
       dry_run:

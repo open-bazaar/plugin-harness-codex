@@ -1,0 +1,53 @@
+id = "harness-codex"
+name = "Codex"
+description = "Official OpenAI Codex CLI (app-server JSON-RPC) harness plugin for Bazaar Compute Node"
+kind = "harness"
+version = "0.4.0-rc.1"
+api_version = 1
+min_host_version = "0.4.0-rc.1"
+license = "Apache-2.0"
+main = "index.lua"
+capabilities = [
+  "inspect",
+  "quota",
+  "steer",
+  "approval",
+  "background_check",
+]
+
+[permissions]
+exec = ["codex"]
+
+[config_schema]
+type = "object"
+additional_properties = false
+
+[config_schema.properties.model]
+type = "string"
+title = "Model"
+description = "Optional Codex model override"
+x_inspect = "models"
+
+[config_schema.properties.effort]
+type = "string"
+title = "Reasoning Effort"
+description = "Optional Codex reasoning effort override"
+x_inspect = "efforts"
+
+[config_schema.properties.apiKey]
+type = "string"
+title = "OpenAI API Key"
+description = "Optional OPENAI_API_KEY override"
+write_only = true
+
+[config_schema.properties.startupTimeoutSec]
+type = "number"
+title = "Startup Timeout (seconds)"
+description = "Timeout in seconds for Codex app-server startup and RPC handshakes"
+default = 60
+
+[config_schema.properties.shutdownTimeoutSec]
+type = "number"
+title = "Shutdown Timeout (seconds)"
+description = "Timeout in seconds for graceful Codex app-server shutdown"
+default = 5
