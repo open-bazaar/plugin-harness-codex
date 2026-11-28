@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   ci:
-    uses: open-bazaar/test-bazaar-plugin/.github/workflows/harness-ci.yml@v1
+    uses: open-bazaar/test-bazaar-plugin/.github/workflows/harness-ci.yml@v0
     with:
       ref: ${{ inputs.ref || github.sha }}
       extra-test-dir: tests
