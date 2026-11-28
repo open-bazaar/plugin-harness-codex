@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: open-bazaar/test-bazaar-plugin/.github/workflows/harness-ci.yml@v0
+    with:
+      ref: ${{ inputs.ref || github.sha }}
+      extra-test-dir: tests
+      setup-cli-script: |
+        npm install --global @openai/codex@latest
+        codex --version
+        sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      artifact-prefix: codex-e2e

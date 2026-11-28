@@ -186,15 +186,19 @@ function CodexAppServer:processLine(rawLine)
   self:handlePacket(pkt)
 end
 
-function CodexAppServer:emitSessionExpired()
+function CodexAppServer:emitSessionExpired(metadata)
   if not self.emitSessionLifecycle or self.expiredEmitted or self.closing then
     return
   end
   self.expiredEmitted = true
-  self.emit({
+  local ev = {
     type = "session_expired",
     sessionId = self.localId,
-  })
+  }
+  if type(metadata) == "table" then
+    ev.metadata = metadata
+  end
+  self.emit(ev)
 end
 
 function CodexAppServer:_rejectAllWaiters(err, options)
@@ -261,7 +265,7 @@ function CodexAppServer:failTransport(err, options)
   self.closed = true
   self:_rejectAllWaiters(err, { emitTurnFailed = not self.closing })
   if not self.closing then
-    self:emitSessionExpired()
+    self:emitSessionExpired({ reason = "process_exited", preserveThread = true })
   end
   if opts.terminate and not self.exited then
     local sigOk = pcall(self.proc.signal, self.proc, "SIGTERM")
