@@ -106,12 +106,17 @@ function CodexAppServer:startReaders()
       if not ok then
         if not self.closing and not self.transportError then
           local msg = P.errMessage(line)
-          if msg:find("limit", 1, true) then
-            msg = "Codex app-server stdout buffer exceeded 16 MiB limit"
+          if msg:find("limit", 1, true) or msg:find("exceeds", 1, true) then
+            self:failTransport(
+              P.newProtocolError("Codex app-server stdout buffer exceeded 16 MiB limit"),
+              { terminate = true }
+            )
           else
-            msg = "Codex app-server stdout read failed: " .. msg
+            self:failTransport(
+              P.newAppServerUnavailable("Codex app-server stdout read failed: " .. msg),
+              { terminate = true }
+            )
           end
-          self:failTransport(P.newProtocolError(msg), { terminate = true })
         end
         break
       end

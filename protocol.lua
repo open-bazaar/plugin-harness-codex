@@ -829,10 +829,22 @@ function M.parseQuotaSnapshot(rl, observedAtMs)
   end
   local bucketEntries = {}
   if M.isPlainObject(rl.rateLimitsByLimitId) then
-    for _, k in ipairs(M.sortedKeys(rl.rateLimitsByLimitId)) do
-      local b = rl.rateLimitsByLimitId[k]
-      if M.isPlainObject(b) then
-        bucketEntries[#bucketEntries + 1] = { tostring(k), b }
+    -- Preserve default ("codex") bucket first if present, matching 0.3 insertion order without arbitrary alphabetical scramble.
+    local keys = M.sortedKeys(rl.rateLimitsByLimitId)
+    for _, k in ipairs(keys) do
+      if tostring(k) == "codex" or tostring(k) == "default" then
+        local b = rl.rateLimitsByLimitId[k]
+        if M.isPlainObject(b) then
+          bucketEntries[#bucketEntries + 1] = { tostring(k), b }
+        end
+      end
+    end
+    for _, k in ipairs(keys) do
+      if tostring(k) ~= "codex" and tostring(k) ~= "default" then
+        local b = rl.rateLimitsByLimitId[k]
+        if M.isPlainObject(b) then
+          bucketEntries[#bucketEntries + 1] = { tostring(k), b }
+        end
       end
     end
   end
@@ -846,12 +858,14 @@ function M.parseQuotaSnapshot(rl, observedAtMs)
   local windows = M.newArray()
   for _, entry in ipairs(bucketEntries) do
     local bucketId, bucket = entry[1], entry[2]
-    local displayName = tostring(
-      (M.isNonEmpty(bucket.limitName) and bucket.limitName)
-        or (M.isNonEmpty(bucket.normalModelSlug) and bucket.normalModelSlug)
-        or ((bucketId ~= "default" and bucketId ~= "") and bucketId)
-        or "codex"
-    )
+    local displayName = ""
+    if M.isNonEmpty(bucket.limitName) then
+      displayName = tostring(bucket.limitName)
+    elseif M.isNonEmpty(bucket.normalModelSlug) then
+      displayName = tostring(bucket.normalModelSlug)
+    elseif bucketId ~= "default" and bucketId ~= "codex" and bucketId ~= "" then
+      displayName = tostring(bucketId)
+    end
     local group = tostring(
       (M.isNonEmpty(bucket.limitName) and bucket.limitName)
         or (M.isNonEmpty(bucket.normalModelSlug) and bucket.normalModelSlug)
