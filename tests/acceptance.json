@@ -1,0 +1,16 @@
+{
+  "full_access_scenarios": ["full-access"],
+  "api_key_env": "OPENAI_API_KEY",
+  "inspect_mcp_tool": true,
+  "mcp_prompt_tool": "mcp__test__get_value",
+  "mcp_approval_action": "mcp_tool_approval",
+  "command_approval_action": "command_execution",
+  "steer_input": "Please keep your reply brief.",
+  "process_match": ["app-server"],
+  "process_env_key": "CODEX_HOME",
+  "instruction_files": ["AGENTS.md"],
+  "refresh_file": "AGENTS.md",
+  "refresh_wait_seconds": 2,
+  "background_hint": "as the foreground command in a persistent tool terminal, without a trailing `&`. Keep that terminal running after this turn.",
+  "prepare_script": "tests/prepare-e2e.sh"
+}

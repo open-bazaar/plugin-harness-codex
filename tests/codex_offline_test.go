@@ -6,33 +6,16 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/open-bazaar/test-bazaar-plugin/fixtures"
+	"github.com/open-bazaar/test-bazaar-plugin/pkg/bcnacceptance"
 )
 
-func TestOfflinePackageAndInspect(t *testing.T) {
-	bcnBin := resolveBCNBin(t)
-	tmp := t.TempDir()
-	homeDir := filepath.Join(tmp, "home")
-	pluginZip := filepath.Join(tmp, "harness-codex.zip")
-
-	entries := packagePluginDir(t, "..", pluginZip)
-	if len(entries) == 0 {
-		t.Fatal("packaged plugin.zip has no entries")
-	}
-	for _, entry := range entries {
-		if strings.HasPrefix(entry, "tests/") || strings.HasPrefix(entry, ".") {
-			t.Fatalf("unexpected non-runtime file leaked into plugin.zip: %s", entry)
-		}
-	}
-
-	insp := runBCN(t, bcnBin, homeDir, nil, "plugin", "inspect", "--dry-run", pluginZip)
-	if !strings.Contains(insp, "harness-codex") {
-		t.Fatalf("expected harness-codex in inspect output:\n%s", insp)
-	}
-	installPluginZip(t, bcnBin, homeDir, pluginZip)
-}
-
 func TestOfflineFakeCLIE2E(t *testing.T) {
-	bcnBin := resolveBCNBin(t)
+	bcnBin, err := bcnacceptance.ResolveBCNBin("")
+	if err != nil {
+		t.Fatal(err)
+	}
 	tmp := t.TempDir()
 	homeDir := filepath.Join(tmp, "home")
 	codexHome := filepath.Join(tmp, "codex-home")
@@ -40,61 +23,80 @@ func TestOfflineFakeCLIE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fakeCLI := buildGoBinary(t, filepath.Join("fixtures", "fakecli"), filepath.Join(tmp, "fake-codex"))
+	fakeCLI, err := bcnacceptance.BuildGoBinary(filepath.Join("fixtures", "fakecli"), filepath.Join(tmp, "fake-codex"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	pluginZip := filepath.Join(tmp, "harness-codex.zip")
 	channelZip := filepath.Join(tmp, "channel-e2e.zip")
-	packagePluginDir(t, "..", pluginZip)
-	packagePluginDir(t, filepath.Join("fixtures", "channel"), channelZip)
-
-	installPluginZip(t, bcnBin, homeDir, pluginZip)
-	installPluginZip(t, bcnBin, homeDir, channelZip)
-	patchReceiptOverrides(t, homeDir, "harness-codex", receiptOverrides{
+	if _, err := bcnacceptance.PackagePluginDir("..", pluginZip); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bcnacceptance.PackageEmbedFS(fixtures.FS, "channel", channelZip); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bcnacceptance.InstallPluginZip(bcnBin, homeDir, pluginZip); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bcnacceptance.InstallPluginZip(bcnBin, homeDir, channelZip); err != nil {
+		t.Fatal(err)
+	}
+	if err := bcnacceptance.PatchReceiptOverrides(homeDir, "harness-codex", bcnacceptance.ReceiptOverrides{
 		ExecOverrides: map[string]string{"codex": fakeCLI},
-	})
+	}); err != nil {
+		t.Fatal(err)
+	}
 
-	chSrv := newE2EChannelServer()
+	chSrv := bcnacceptance.NewE2EChannelServer()
 	defer chSrv.Close()
 
 	const agentID = "assistant"
-	writeCodexNodeConfig(t, homeDir, codexConfigOptions{
-		AgentID:     agentID,
-		ChannelURL:  chSrv.URL(),
-		Mode:        "session",
-		Sandbox:     "workspace-write",
-		IdleTimeout: 0,
-		Model:       "fake-codex-1",
-	})
+	if err := bcnacceptance.WriteHarnessNodeConfig(homeDir, agentID, "harness-codex", chSrv.URL(), "workspace-write", 0, map[string]any{
+		"model": "fake-codex-1",
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	env := map[string]string{"CODEX_HOME": codexHome}
 
-	// 1. Offline bcn agent inspect & bcn agent quota against fake codex app-server.
-	inspectOut := runBCN(t, bcnBin, homeDir, env, "agent", "inspect", agentID)
+	inspectOut, err := bcnacceptance.RunBCN(bcnBin, homeDir, env, "agent", "inspect", agentID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, want := range []string{"harness-codex", "true", "0.169.0"} {
 		if !strings.Contains(inspectOut, want) {
 			t.Fatalf("expected %q in bcn agent inspect output:\n%s", want, inspectOut)
 		}
 	}
 
-	quotaOut := runBCN(t, bcnBin, homeDir, env, "agent", "quota", agentID)
+	quotaOut, err := bcnacceptance.RunBCN(bcnBin, homeDir, env, "agent", "quota", agentID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(quotaOut, "75%") || !strings.Contains(quotaOut, "90%") {
 		t.Fatalf("expected 75%% and 90%% remaining quota in bcn agent quota output:\n%s", quotaOut)
 	}
 
-	// 2. Live bcn run turn with approval prompt -> real injected `bcc message send` -> clean shutdown.
-	artDir := artifactDir(t, "offline-codex")
-	node := startBCNNode(t, bcnBin, homeDir, env, filepath.Join(artDir, "node.log"))
+	artDir, err := bcnacceptance.ArtifactDir("", "offline-codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := bcnacceptance.StartBCNNode(bcnBin, homeDir, env, filepath.Join(artDir, "node.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer func() {
-		node.dumpEventsToFile(filepath.Join(artDir, "audit.jsonl"))
+		node.DumpEventsToFile(filepath.Join(artDir, "audit.jsonl"))
 		_ = node.Stop()
 	}()
 
-	if _, err := node.waitEvent(20*time.Second, 0, func(ev auditEvent) bool {
+	if _, err := node.WaitEvent(20*time.Second, 0, func(ev bcnacceptance.AuditEvent) bool {
 		return ev.Type == "channel.connected" && ev.PluginID == "channel-e2e"
 	}); err != nil {
 		t.Fatalf("wait channel.connected: %v\nlog:\n%s", err, node.LogText())
 	}
 
-	reports, err := node.inspectHarnesses(agentID)
+	reports, err := node.InspectHarnesses(agentID)
 	if err != nil || len(reports) != 1 || !reports[0].Result.Available || reports[0].Result.Version != "0.169.0" {
 		t.Fatalf("unexpected online agents.inspect report: reports=%+v err=%v", reports, err)
 	}
@@ -120,13 +122,13 @@ func TestOfflineFakeCLIE2E(t *testing.T) {
 	chSrv.PushDM("offline-msg-1", "Please say hello via bcc.")
 	approveDeadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(approveDeadline) {
-		if node.approvePendingReviews(agentID) > 0 {
+		if node.ApprovePendingReviews(agentID) > 0 {
 			break
 		}
 		time.Sleep(150 * time.Millisecond)
 	}
 
-	if _, err := node.waitEvent(30*time.Second, 0, func(ev auditEvent) bool {
+	if _, err := node.WaitEvent(30*time.Second, 0, func(ev bcnacceptance.AuditEvent) bool {
 		return ev.Type == "harness.turn_completed" && ev.PluginID == "harness-codex"
 	}); err != nil {
 		t.Fatalf("wait harness.turn_completed: %v\nlog:\n%s", err, node.LogText())
@@ -135,21 +137,20 @@ func TestOfflineFakeCLIE2E(t *testing.T) {
 	if chSrv.PromptsCount() == 0 {
 		t.Fatalf("expected at least one interactive approval prompt in workspace-write mode")
 	}
-	outs := chSrv.OutboundSince(0)
 	foundReply := false
-	for _, m := range outs {
+	for _, m := range chSrv.OutboundSince(0) {
 		if strings.Contains(m.Body, "FAKE_CODEX_OK") {
 			foundReply = true
 			break
 		}
 	}
 	if !foundReply {
-		t.Fatalf("expected FAKE_CODEX_OK via real bcc message send, got outbound=%+v", outs)
+		t.Fatalf("expected FAKE_CODEX_OK via real bcc message send, got outbound=%+v", chSrv.OutboundSince(0))
 	}
 
-	evs, err := node.eventsSince(0)
+	evs, err := node.EventsSince(0)
 	if err != nil {
-		t.Fatalf("eventsSince: %v", err)
+		t.Fatalf("EventsSince: %v", err)
 	}
 	hasUsage, hasApprovalDecided := false, false
 	for _, ev := range evs {
@@ -167,13 +168,12 @@ func TestOfflineFakeCLIE2E(t *testing.T) {
 		t.Fatalf("expected approval.decided=approve:once event")
 	}
 
-	// Verify clean teardown and zero lingering child processes on Linux.
-	beforeStopChildren := linuxDescendants(node.PID())
+	beforeStopChildren := bcnacceptance.LinuxDescendants(node.PID())
 	if err := node.Stop(); err != nil {
 		t.Fatalf("node.Stop returned error: %v", err)
 	}
 	for _, child := range beforeStopChildren {
-		if pidAliveLinux(child.PID) {
+		if bcnacceptance.PIDAliveLinux(child.PID) {
 			t.Fatalf("leaked child process after bcn stop: pid=%d cmd=%q", child.PID, child.Cmdline)
 		}
 	}

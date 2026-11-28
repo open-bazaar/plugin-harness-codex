@@ -627,7 +627,7 @@ end
 
 local function hasBackgroundJob(sessionId)
   local srv = sessions[sessionId]
-  if not srv then
+  if not srv or srv.closed or srv.exited then
     return false
   end
   local ok, resultOrErr = pcall(function()

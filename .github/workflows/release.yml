@@ -17,18 +17,29 @@ on:
         type: boolean
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: plugin-release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ github.sha }}
+    secrets: inherit
+
   release:
     name: Validate, Package & Publish Plugin
+    needs: [ci]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
       - uses: open-bazaar/release-bazaar-plugin@v1
         with:
           tag: ${{ inputs.tag }}
