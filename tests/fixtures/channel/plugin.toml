@@ -1,0 +1,23 @@
+id = "channel-e2e"
+name = "E2E Test Channel"
+description = "Local loopback HTTP channel fixture for harness E2E tests"
+kind = "channel"
+version = "0.4.0-rc.1"
+api_version = 1
+min_host_version = "0.4.0-rc.1"
+license = "Apache-2.0"
+main = "index.lua"
+capabilities = ["interactive_prompt"]
+
+[permissions]
+network = ["127.0.0.1"]
+private_hosts = ["127.0.0.1"]
+
+[config_schema]
+type = "object"
+additional_properties = false
+required = ["baseUrl"]
+
+[config_schema.properties.baseUrl]
+type = "string"
+title = "Base URL"

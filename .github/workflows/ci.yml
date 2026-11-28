@@ -1,0 +1,120 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Checks (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.x'
+          cache: false
+      - name: Install bcn
+        env:
+          GOPRIVATE: github.com/yuchanns/bazaar-compute-node
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          GOBIN="$RUNNER_TEMP/bin" go install -ldflags "-X main.HostVersion=0.4.0-rc.1" github.com/yuchanns/bazaar-compute-node/cmd/bcn@0.4
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/bin/bcn" --version
+      - name: Vet & Test (offline)
+        working-directory: tests
+        run: |
+          go vet ./...
+          go test -v -timeout 5m -count=1 -run TestOffline ./...
+
+  e2e:
+    name: E2E (${{ matrix.scenario }})
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario:
+          - mcp-once
+          - mcp-session
+          - mcp-always
+          - bcc
+          - full-access
+          - recovery
+          - refresh
+          - background
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.x'
+          cache: false
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Install Codex CLI
+        run: npm install --global @openai/codex@latest
+      - name: Codex Version
+        run: codex --version
+      - name: Enable unprivileged userns sandbox
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Install bcn
+        env:
+          GOPRIVATE: github.com/yuchanns/bazaar-compute-node
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          GOBIN="$RUNNER_TEMP/bin" go install -ldflags "-X main.HostVersion=0.4.0-rc.1" github.com/yuchanns/bazaar-compute-node/cmd/bcn@0.4
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/bin/bcn" --version
+      - name: Gateway
+        uses: yuchanns/setup-ai-gateway@564af746413273335294b725ff195acde1501f3d
+        id: gateway
+        with:
+          context-size: '131072'
+      - name: Run Live Codex E2E
+        working-directory: tests
+        env:
+          BCN_REQUIRE_LIVE_E2E: '1'
+          BCN_E2E_SCENARIO: ${{ matrix.scenario }}
+          BCN_E2E_MODEL: ${{ steps.gateway.outputs.model }}
+          BCN_E2E_ARTIFACTS: ${{ github.workspace }}/.artifacts/e2e
+        run: |
+          mkdir -p "$BCN_E2E_ARTIFACTS"
+          go test -v -timeout 30m -count=1 -run TestLiveCodexE2E ./...
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always()
+        with:
+          name: codex-e2e-${{ matrix.scenario }}
+          path: |
+            .artifacts/e2e/**/*.log
+            .artifacts/e2e/**/*.jsonl
+          include-hidden-files: true
+          if-no-files-found: warn
